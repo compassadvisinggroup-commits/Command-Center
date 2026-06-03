@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Command Center — Compass Advising Group</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#FAF8F5;font-family:Georgia,'Times New Roman',serif;min-height:100vh}
+  input,textarea,select{font-family:inherit}
+  button{font-family:system-ui,sans-serif}
+  ::-webkit-scrollbar{width:6px}
+  ::-webkit-scrollbar-track{background:#F0EDE8}
+  ::-webkit-scrollbar-thumb{background:#B8904A;border-radius:3px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useCallback, useRef } = React;
+
+// ─── SUPABASE ─────────────────────────────────────────────────────────────────
+const SB_URL = "https://lkgtwsdscxowrficpmgr.supabase.co";
+const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxrZ3R3c2RzY3hvd3JmaWNwbWdyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzNzY2MzcsImV4cCI6MjA5NTk1MjYzN30.ayrk5XPK7EA5HBzJlMd4fzIk1A41rr3XU0n93Qljxfw";
+const HDR = {"apikey":SB_KEY,"Authorization":`Bearer ${SB_KEY}`,"Content-Type":"application/json"};
+
+async function sbGet() {
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/command_center?id=eq.main&select=data`,{headers:HDR});
+    const rows = await r.json();
+    return rows?.[0]?.data || null;
+  } catch { return null; }
+}
+async function sbSet(data) {
+  try {
+    await fetch(`${SB_URL}/rest/v1/command_center?id=eq.main`,{
+      method:"PATCH", headers:{...HDR,"Prefer":"return=minimal"},
+      body:JSON.stringify({data,updated_at:new Date().toISOString()})
+    });
+  } catch {}
+}
+
+// ─── CONSTANTS ────────────────────────────────────────────────────────────────
+const C = {
+  gold:"#C17D3C",goldL:"#FDF3E7",goldB:"#E8C49A",
+  teal:"#4A7C6F",tealL:"#EAF4F1",tealB:"#9DCEC4",
+  navy:"#2C3E6B",navyL:"#EEF1F8",navyB:"#A8B4D4",
+  rose:"#B05070",roseL:"#FBF0F3",roseB:"#E0A0B5",
+  a:"#C0392B",aL:"#FDF0EE",aB:"#E8A8A0",
+  b:"#C17D3C",bL:"#FDF3E7",bB:"#E8C49A",
+  cc:"#4A7C6F",cL:"#EAF4F1",cB:"#9DCEC4",
+  bg:"#FAF8F5",dark:"#1C1C1E",text:"#2C2C2E",muted:"#888",border:"#EBEBEB",white:"#FFFFFF"
+};
+const ABC = {
+  A:{label:"A — Must Do",color:C.a,light:C.aL,border:C.aB,desc:"Critical · Serious consequences if skipped"},
+  B:{label:"B — Should Do",color:C.b,light:C.bL,border:C.bB,desc:"Important · Do after all A tasks"},
+  C:{label:"C — Nice to Do",color:C.cc,light:C.cL,border:C.cB,desc:"Low priority · No consequence if postponed"}
+};
+const TABS=["🗓 This Week","✅ To-Do","🏆 Wins","🤖 Coach","🅿️ Ideas"];
+const WEEKLY_LANES=[
+  {id:"mustdo",label:"Must-Do's This Week",emoji:"🔴",color:C.a,light:C.aL,border:C.aB,sub:"Non-negotiable"},
+  {id:"workbook",label:"Powerful All Along",emoji:"📖",color:C.gold,light:C.goldL,border:C.goldB,sub:"Your path to $1,000/month"},
+  {id:"ai",label:"AI Training",emoji:"🤖",color:C.teal,light:C.tealL,border:C.tealB,sub:"Efficiency investment"},
+  {id:"work",label:"Work Priorities",emoji:"📋",color:C.navy,light:C.navyL,border:C.navyB,sub:"INROADS deliverables"},
+  {id:"personal",label:"Personal & Family",emoji:"🏠",color:C.rose,light:C.roseL,border:C.roseB,sub:"Caleb, home, appointments"}
+];
+const PREPOPULATED={
+  mustdo:[
+    {text:"PA Annual Report: FILED AND PAID June 1",done:true},
+    {text:"PSLF Step 1: Husband submits Direct Consolidation Loan at StudentAid.gov this week",done:false},
+    {text:"Elijah: Docs sent, kickoff call June 2 at 12pm",done:true}
+  ],
+  workbook:[
+    {text:"Porsche permission: text sent 5/31 — follow up June 7 if no response",done:false},
+    {text:"Calcie Cooper permission: email sent 5/31 — follow up June 7 if no response",done:false},
+    {text:"DONE: Completed draft of Chapters 1 through 5 — June 1, 2026",done:true}
+  ],
+  ai:[{text:"Complete next Anthropic Academy module",done:false}],
+  work:[
+    {text:"INROADS: Email Harbor Bank and Bates White today",done:false},
+    {text:"INROADS: Send 20 more CEO event invites by June 5",done:false},
+    {text:"INROADS: Career Advisor inputs review — August through October",done:false},
+    {text:"INROADS: Final bill report for Young Men United",done:false}
+  ],
+  personal:[
+    {text:"Caleb party: Check weather June 7 then book chair/table rental",done:false},
+    {text:"TJF grant call tomorrow — prep Caleb grant questions",done:false},
+    {text:"TISLA email tomorrow — PSLF questions re: Parent PLUS consolidation",done:false}
+  ]
+};
+const PREPOPULATED_TODOS=[
+  {text:"File PA Annual Report DONE — June 1, 2026",abc:"C",deadline:""},
+  {text:"PSLF: Email TISLA tomorrow — freestudentloanadvice.org",abc:"A",deadline:"2026-06-02"},
+  {text:"PSLF: 15-min follow up with Student Loan Doctor — confirm appointment",abc:"A",deadline:"2026-06-05"},
+  {text:"PSLF Step 1 URGENT: Husband submits Direct Consolidation Loan at StudentAid.gov — July 1 hard deadline",abc:"A",deadline:"2026-06-05"},
+  {text:"PSLF Step 2: Call Advantage once submitted — confirm receipt, request expedited processing",abc:"A",deadline:"2026-06-10"},
+  {text:"PSLF Step 3: After disbursement — enroll in ICR repayment plan to maintain PSLF eligibility",abc:"A",deadline:"2026-06-30"},
+  {text:"PSLF REMINDER: Do NOT take out any new Parent PLUS loans after July 1",abc:"A",deadline:""},
+  {text:"Caleb party DONE: Venue, evites, photos, banner, food, paint all complete",abc:"C",deadline:""},
+  {text:"Caleb party: Check weather June 7 then book chair/table rental",abc:"A",deadline:"2026-06-07"},
+  {text:"CALEB DONE: Cheyney confirmed grantor letter honored",abc:"C",deadline:""},
+  {text:"Caleb: TJF grant call scheduled — confirm grant details",abc:"A",deadline:"2026-06-02"},
+  {text:"Elijah: Joint financial aid meeting at JWU — Elijah scheduling",abc:"B",deadline:"2026-06-07"},
+  {text:"COMPASS DONE: Elijah received all documents 6/1. Kickoff call June 2 at 12pm. Canva login sent.",abc:"C",deadline:""},
+  {text:"COMPASS: Confirm Elijah's LinkedIn Learning access on June 2 kickoff call",abc:"B",deadline:"2026-06-02"},
+  {text:"INROADS DONE: CEO event invite for June 13 created and sent to 2 people",abc:"C",deadline:""},
+  {text:"INROADS: Send 20 more CEO event invites — June 13 event",abc:"A",deadline:"2026-06-05"},
+  {text:"INROADS: Email Harbor Bank",abc:"A",deadline:"2026-06-02"},
+  {text:"INROADS: Email Bates White",abc:"A",deadline:"2026-06-02"},
+  {text:"INROADS: Review Career Advisor inputs — August through October talent needs",abc:"B",deadline:""},
+  {text:"INROADS: Final bill report for Young Men United",abc:"B",deadline:""},
+  {text:"Porsche permission: text sent 5/31 — follow up June 7 if no response",abc:"B",deadline:"2026-06-07"},
+  {text:"Calcie Cooper permission: email sent 5/31 — follow up June 7 if no response",abc:"B",deadline:"2026-06-07"},
+  {text:"WORKBOOK MILESTONE: Draft of Chapters 1 through 5 completed June 1, 2026",abc:"C",deadline:""},
+  {text:"Elijah financial aid gap — confirm amount and options with JWU",abc:"B",deadline:"2026-06-21"},
+  {text:"PSLF DONE: ECF submitted May 31. Husband verified ~20 payments remaining. Servicer: Advantage.",abc:"C",deadline:""},
+  {text:"PSLF DONE: Called Advantage 2 weeks ago — exploratory only, consolidation not yet filed",abc:"C",deadline:""}
+];
+const QUOTES=[
+  "She decided to build the life she kept imagining — one focused hour at a time.",
+  "The most powerful woman in the room is the one who knows exactly what she's building.",
+  "Your consistency today is someone else's inspiration tomorrow.",
+  "A visionary with a system is unstoppable. You are both.",
+  "She didn't wait for permission. She built the door.",
+  "Success isn't found — it's constructed, brick by brick, choice by choice.",
+  "The work you do in the margins of your day will define the center of your future.",
+  "Lead your business like you lead your team — with clarity, purpose, and no wasted motion.",
+  "Your story is already written. You're just living up to it.",
+  "A focused woman with a deadline is the most powerful force in any room.",
+  "She balanced everything because she knew what mattered most.",
+  "Every small step you take today is a promise to your future self."
+];
+const mkId=()=>`${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+function getWeekKey(){const n=new Date(),s=new Date(n);s.setDate(n.getDate()-n.getDay()+1);return s.toISOString().slice(0,10);}
+function getWeekLabel(){const n=new Date(),s=new Date(n);s.setDate(n.getDate()-n.getDay()+1);const e=new Date(s);e.setDate(s.getDate()+6);const f=d=>d.toLocaleDateString("en-US",{month:"short",day:"numeric"});return`${f(s)} – ${f(e)}`;}
+function todayKey(){return new Date().toISOString().slice(0,10);}
+function todayLabel(){return new Date().toLocaleDateString("en-US",{weekday:"long",month:"short",day:"numeric"});}
+function daysUntil(ds){if(!ds)return null;return Math.ceil((new Date(ds+"T12:00:00")-new Date())/86400000);}
+function getDailyQuote(){return QUOTES[new Date().getDate()%QUOTES.length];}
+function defaultWeekly(){const l={};WEEKLY_LANES.forEach(ln=>{const p=PREPOPULATED[ln.id]||[];l[ln.id]=p.length?p.map(x=>({id:mkId(),text:x.text,done:x.done})):[{id:mkId(),text:"",done:false}];});return l;}
+function reassignANums(todos){let n=1;return todos.map(t=>t.abc==="A"?{...t,abcNum:n++}:t);}
+function getAbcGroups(todos){const g={A:[],B:[],C:[],none:[]};todos.forEach(t=>{const k=t.abc||"none";if(g[k])g[k].push(t);else g.none.push(t);});g.A.sort((a,b)=>(a.abcNum||99)-(b.abcNum||99));return g;}
+const defaultState=()=>({weekKey:getWeekKey(),weekly:defaultWeekly(),todos:reassignANums(PREPOPULATED_TODOS.map(t=>({id:mkId(),done:false,...t}))),wins:{},parkedIdeas:[],lastCoachFetch:null,coachNudge:null,coachFull:null});
+
+// ─── COMPONENTS ───────────────────────────────────────────────────────────────
+function Check({done,color,onClick}){
+  return <button onClick={onClick} style={{width:20,height:20,borderRadius:"50%",border:`2px solid ${done?color:"#DDD"}`,background:done?color:"transparent",cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",padding:0,transition:"all 0.2s"}}>
+    {done&&<svg width="10" height="8" viewBox="0 0 10 8"><path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+  </button>;
+}
+function AbcBadge({val,onChange}){
+  const [open,setOpen]=useState(false);
+  const cfg=val?ABC[val]:null;
+  return <div style={{position:"relative"}}>
+    <button onClick={()=>setOpen(o=>!o)} style={{background:cfg?cfg.light:"#F5F5F5",border:`1.5px solid ${cfg?cfg.border:"#DDD"}`,borderRadius:7,padding:"3px 9px",fontSize:11,fontWeight:700,color:cfg?cfg.color:C.muted,cursor:"pointer",fontFamily:"system-ui",minWidth:32}}>
+      {val||"—"}
+    </button>
+    {open&&<div style={{position:"absolute",top:"110%",left:0,background:C.white,borderRadius:10,border:`1px solid ${C.border}`,boxShadow:"0 4px 20px rgba(0,0,0,0.12)",zIndex:999,minWidth:200,overflow:"hidden"}}>
+      {["A","B","C"].map(k=><button key={k} onClick={()=>{onChange(k);setOpen(false);}} style={{display:"block",width:"100%",textAlign:"left",padding:"9px 12px",background:"transparent",border:"none",cursor:"pointer",borderBottom:k!=="C"?`1px solid ${C.border}`:"none"}}>
+        <div style={{fontSize:12,fontWeight:700,color:ABC[k].color,fontFamily:"system-ui"}}>{k}</div>
+        <div style={{fontSize:10,color:C.muted,fontFamily:"system-ui",marginTop:1}}>{ABC[k].desc}</div>
+      </button>)}
+      {val&&<button onClick={()=>{onChange(null);setOpen(false);}} style={{display:"block",width:"100%",textAlign:"left",padding:"8px 12px",background:"#FAFAFA",border:"none",cursor:"pointer",fontSize:11,color:C.muted,fontFamily:"system-ui"}}>Clear</button>}
+    </div>}
+  </div>;
+}
+function TodoItem({todo,abcNum,onUpdate,onRemove}){
+  const cfg=todo.abc?ABC[todo.abc]:null;
+  const days=daysUntil(todo.deadline);
+  const overdue=days!==null&&days<0&&!todo.done;
+  const soon=days!==null&&days>=0&&days<=2&&!todo.done;
+  return <div style={{background:cfg?cfg.light:C.white,border:`1.5px solid ${cfg?cfg.border:C.border}`,borderRadius:12,padding:"10px 13px",marginBottom:8,position:"relative"}}>
+    {todo.abc==="A"&&abcNum&&<div style={{position:"absolute",top:-1,right:10,background:C.a,color:"#fff",fontSize:9,fontFamily:"system-ui",fontWeight:700,padding:"2px 8px",borderRadius:"0 0 6px 6px"}}>A-{abcNum}</div>}
+    <div style={{display:"flex",alignItems:"flex-start",gap:9}}>
+      <Check done={todo.done} color={cfg?cfg.color:C.gold} onClick={()=>onUpdate(todo.id,"done",!todo.done)}/>
+      <div style={{flex:1,minWidth:0}}>
+        <input type="text" value={todo.text} onChange={e=>onUpdate(todo.id,"text",e.target.value)} placeholder="What needs to happen?" style={{width:"100%",border:"none",outline:"none",fontSize:13,fontFamily:"Georgia,serif",color:todo.done?"#AAA":C.text,textDecoration:todo.done?"line-through":"none",background:"transparent",boxSizing:"border-box"}}/>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginTop:6,flexWrap:"wrap"}}>
+          <AbcBadge val={todo.abc} onChange={v=>onUpdate(todo.id,"abc",v)}/>
+          <div style={{display:"flex",alignItems:"center",gap:4}}>
+            <span style={{fontSize:10,color:C.muted,fontFamily:"system-ui"}}>Due:</span>
+            <input type="date" value={todo.deadline||""} onChange={e=>onUpdate(todo.id,"deadline",e.target.value)} style={{border:`1px solid ${overdue?C.a:soon?C.b:C.border}`,borderRadius:6,padding:"2px 6px",fontSize:11,fontFamily:"system-ui",color:overdue?C.a:soon?C.b:C.muted,background:"transparent",outline:"none"}}/>
+            {(overdue||soon)&&<span style={{fontSize:10,fontWeight:700,color:overdue?C.a:C.b,fontFamily:"system-ui"}}>{overdue?"OVERDUE":days===0?"TODAY":`${days}d`}</span>}
+          </div>
+        </div>
+      </div>
+      <button onClick={()=>onRemove(todo.id)} style={{background:"none",border:"none",color:"#CCC",cursor:"pointer",fontSize:15,padding:"0 1px",flexShrink:0}}>×</button>
+    </div>
+  </div>;
+}
+function LaneCard({lane,tasks,onUpdate,onAdd,onRemove}){
+  const filled=tasks.filter(t=>t.text.trim());
+  const done=filled.filter(t=>t.done).length;
+  return <div style={{background:C.white,borderRadius:14,border:`1.5px solid ${lane.border}`,overflow:"hidden",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+    <div style={{background:lane.light,padding:"11px 15px",borderBottom:`1px solid ${lane.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+      <div>
+        <div style={{display:"flex",alignItems:"center",gap:7}}>
+          <span style={{fontSize:16}}>{lane.emoji}</span>
+          <span style={{fontSize:13,fontWeight:"bold",color:lane.color}}>{lane.label}</span>
+          {filled.length>0&&<span style={{fontSize:10,color:lane.color,background:C.white,padding:"1px 7px",borderRadius:20,border:`1px solid ${lane.border}`,fontFamily:"system-ui"}}>{done}/{filled.length}</span>}
+        </div>
+        {lane.sub&&<div style={{fontSize:10,color:C.muted,fontFamily:"system-ui",marginTop:2,paddingLeft:23}}>{lane.sub}</div>}
+      </div>
+    </div>
+    <div style={{padding:"8px 13px"}}>
+      {tasks.map((task,idx)=><div key={task.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 2px",borderBottom:idx<tasks.length-1?"1px solid #F5F5F5":"none"}}>
+        <Check done={task.done} color={lane.color} onClick={()=>onUpdate(task.id,"done",!task.done)}/>
+        <input type="text" value={task.text} onChange={e=>onUpdate(task.id,"text",e.target.value)} placeholder="Add item..." style={{flex:1,border:"none",outline:"none",fontSize:13,fontFamily:"Georgia,serif",color:task.done?"#AAA":C.text,textDecoration:task.done?"line-through":"none",background:"transparent"}}/>
+        <button onClick={()=>onRemove(task.id)} style={{background:"none",border:"none",color:"#CCC",cursor:"pointer",fontSize:15,padding:"0 1px"}}>×</button>
+      </div>)}
+      <button onClick={onAdd} style={{marginTop:6,background:"none",border:`1px dashed ${lane.border}`,borderRadius:8,color:lane.color,cursor:"pointer",fontSize:11,fontFamily:"system-ui",padding:"5px 12px",width:"100%",textAlign:"center"}}>+ Add</button>
+    </div>
+  </div>;
+}
+
+// ─── MAIN APP ─────────────────────────────────────────────────────────────────
+function App(){
+  const [state,setState]=useState(null);
+  const [tab,setTab]=useState(0);
+  const [winNote,setWinNote]=useState("");
+  const [newIdea,setNewIdea]=useState("");
+  const [coachLoading,setCoachLoading]=useState(false);
+  const [coachError,setCoachError]=useState(null);
+  const [syncStatus,setSyncStatus]=useState("synced");
+  const saveTimer=useRef(null);
+
+  useEffect(()=>{
+    async function load(){
+      setSyncStatus("loading");
+      const saved=await sbGet();
+      if(saved&&Object.keys(saved).length>0){
+        const existingTexts=new Set((saved.todos||[]).map(t=>t.text));
+        const newTodos=PREPOPULATED_TODOS.filter(t=>!existingTexts.has(t.text)).map(t=>({id:mkId(),done:false,...t}));
+        const merged=reassignANums([...(saved.todos||[]),...newTodos]);
+        if(saved.weekKey!==getWeekKey()){
+          setState({...saved,weekKey:getWeekKey(),weekly:defaultWeekly(),todos:merged,coachNudge:null,lastCoachFetch:null});
+        } else {
+          setState({...saved,todos:merged});
+        }
+      } else {
+        setState(defaultState());
+      }
+      setSyncStatus("synced");
+    }
+    load();
+  },[]);
+
+  useEffect(()=>{
+    if(!state)return;
+    setSyncStatus("saving");
+    if(saveTimer.current)clearTimeout(saveTimer.current);
+    saveTimer.current=setTimeout(async()=>{
+      await sbSet(state);
+      setSyncStatus("synced");
+    },800);
+    return()=>clearTimeout(saveTimer.current);
+  },[state]);
+
+  const update=patch=>setState(s=>({...s,...patch}));
+  const autoLogWin=useCallback((text)=>{
+    if(!text?.trim())return;
+    const key=todayKey();
+    setState(s=>{
+      const ex=s.wins[key]||{count:0,notes:[]};
+      if(ex.notes.includes(`✓ ${text.trim()}`))return s;
+      return{...s,wins:{...s.wins,[key]:{count:ex.count+1,notes:[...ex.notes,`✓ ${text.trim()}`]}}};
+    });
+  },[]);
+
+  const updateWeekTask=(laneId,taskId,field,val)=>{
+    setState(s=>{
+      const lane=s.weekly[laneId];
+      const task=lane.find(t=>t.id===taskId);
+      if(field==="done"&&val===true&&task?.text?.trim())autoLogWin(task.text);
+      return{...s,weekly:{...s.weekly,[laneId]:lane.map(t=>t.id===taskId?{...t,[field]:val}:t)}};
+    });
+  };
+  const addWeekTask=laneId=>update({weekly:{...state.weekly,[laneId]:[...state.weekly[laneId],{id:mkId(),text:"",done:false}]}});
+  const removeWeekTask=(laneId,taskId)=>update({weekly:{...state.weekly,[laneId]:state.weekly[laneId].filter(t=>t.id!==taskId)}});
+  const updateTodo=(id,field,val)=>{
+    setState(s=>{
+      const todo=s.todos.find(t=>t.id===id);
+      if(field==="done"&&val===true&&todo?.text?.trim())autoLogWin(todo.text);
+      let updated=s.todos.map(t=>t.id===id?{...t,[field]:val}:t);
+      if(field==="abc")updated=reassignANums(updated);
+      return{...s,todos:updated};
+    });
+  };
+  const addTodo=()=>update({todos:[...state.todos,{id:mkId(),text:"",done:false,deadline:"",abc:null}]});
+  const removeTodo=id=>update({todos:state.todos.filter(t=>t.id!==id)});
+
+  const today=todayKey();
+  const todayWins=state?.wins?.[today]||{count:0,notes:[]};
+  const addWin=()=>{
+    if(!winNote.trim())return;
+    update({wins:{...state.wins,[today]:{count:todayWins.count+1,notes:[...todayWins.notes,winNote.trim()]}}});
+    setWinNote("");
+  };
+  const weeklyWinCount=()=>{
+    if(!state)return 0;
+    return Object.entries(state.wins).filter(([k])=>k>=getWeekKey()).reduce((a,[,v])=>a+v.count,0);
+  };
+
+  const buildContext=useCallback((s)=>{
+    const wb=s.weekly.workbook||[];
+    const wbPct=wb.length>0?Math.round(wb.filter(t=>t.done).length/wb.length*100):0;
+    const groups=getAbcGroups(s.todos);
+    const overdueA=groups.A.filter(t=>!t.done&&daysUntil(t.deadline)<0).map(t=>t.text);
+    const winsThisWeek=Object.entries(s.wins).filter(([k])=>k>=getWeekKey()).reduce((a,[,v])=>a+v.count,0);
+    return `You are Niaomi Carter's personal productivity coach.\nCONTEXT: Goal $1,000/month from Powerful All Along workbook. Bandwidth limited. Uses ABC prioritization.\nTHIS WEEK: Workbook ${wbPct}% done. A-tasks: ${groups.A.length} (${groups.A.filter(t=>t.done).length} done). Overdue A: ${overdueA.join(", ")||"none"}. Parked ideas: ${s.parkedIdeas.length}. Wins: ${winsThisWeek}.\nGenerate: 1) NUDGE: 1-2 sentence motivational nudge specific to her situation. 2) RECOMMENDATIONS: 3-5 concrete prioritization recommendations referencing ABC system.\nRespond ONLY as valid JSON: {"nudge":"...","recommendations":["...","...","..."]}`;
+  },[]);
+
+  const fetchCoach=useCallback(async(s)=>{
+    setCoachLoading(true);setCoachError(null);
+    try{
+      const res=await fetch("/api/coach",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({prompt:buildContext(s)})
+      });
+      const data=await res.json();
+      const raw=data.text||"";
+      const parsed=JSON.parse(raw.replace(/```json|```/g,"").trim());
+      update({coachNudge:parsed.nudge,coachFull:parsed.recommendations,lastCoachFetch:new Date().toISOString()});
+    } catch{setCoachError("Couldn't load recommendations right now. Try again.");}
+    setCoachLoading(false);
+  },[buildContext]);
+
+  useEffect(()=>{
+    if(!state)return;
+    const last=state.lastCoachFetch?new Date(state.lastCoachFetch):null;
+    if(!last||(new Date()-last)>6*3600000)fetchCoach(state);
+  },[!!state]);
+
+  if(!state)return <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100vh",background:C.bg,gap:16}}>
+    <div style={{fontSize:28}}>✦</div>
+    <div style={{fontSize:14,color:C.muted,fontFamily:"system-ui"}}>Loading your command center...</div>
+  </div>;
+
+  const allWeekTasks=WEEKLY_LANES.flatMap(l=>state.weekly[l.id].filter(t=>t.text.trim()));
+  const doneTasks=allWeekTasks.filter(t=>t.done).length;
+  const pct=allWeekTasks.length>0?Math.round(doneTasks/allWeekTasks.length*100):0;
+  const groups=getAbcGroups(state.todos);
+  const parkCount=state.parkedIdeas.length;
+
+  return <div style={{minHeight:"100vh",background:C.bg,paddingBottom:60}}>
+    {/* HEADER */}
+    <div style={{background:C.dark,padding:"18px 16px 0",position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 20px rgba(0,0,0,0.2)"}}>
+      <div style={{maxWidth:780,margin:"0 auto"}}>
+        {/* Quote */}
+        <div style={{background:"linear-gradient(135deg,#2A2200 0%,#1C1C1E 100%)",borderRadius:10,padding:"10px 14px",marginBottom:12,borderLeft:`3px solid ${C.gold}`}}>
+          <div style={{fontSize:10,letterSpacing:2,color:C.gold,fontFamily:"system-ui",textTransform:"uppercase",marginBottom:4}}>Daily Intention</div>
+          <div style={{fontSize:13,color:"#F0DFC0",fontStyle:"italic",lineHeight:1.5}}>"{getDailyQuote()}"</div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8,marginBottom:8}}>
+          <div>
+            <div style={{fontSize:9,letterSpacing:3,color:C.gold,textTransform:"uppercase",fontFamily:"system-ui",marginBottom:1}}>Compass Advising Group</div>
+            <div style={{fontSize:18,color:"#FAF8F5"}}>Command Center</div>
+            <div style={{fontSize:10,color:"#555",fontFamily:"system-ui",marginTop:1}}>
+              {getWeekLabel()} · {weeklyWinCount()} wins
+              <span style={{marginLeft:8,color:syncStatus==="synced"?"#4A7C6F":syncStatus==="saving"?"#C17D3C":"#888"}}>
+                {syncStatus==="synced"?"✓ synced":syncStatus==="saving"?"· saving...":"· loading..."}
+              </span>
+            </div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            {parkCount>0&&<button onClick={()=>setTab(4)} style={{background:"#2A2A2C",border:"1px solid #444",borderRadius:20,padding:"4px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+              <span style={{fontSize:12}}>🅿️</span>
+              <span style={{fontSize:11,color:C.gold,fontFamily:"system-ui",fontWeight:700}}>{parkCount}</span>
+            </button>}
+            <div style={{textAlign:"right"}}>
+              <div style={{fontSize:22,fontWeight:"bold",color:pct===100?C.teal:C.gold,lineHeight:1}}>{pct}%</div>
+              <div style={{fontSize:10,color:"#555",fontFamily:"system-ui"}}>{doneTasks}/{allWeekTasks.length}</div>
+            </div>
+          </div>
+        </div>
+        {/* Coach nudge */}
+        {state.coachNudge&&<div style={{background:"#2A2A2C",borderRadius:8,padding:"8px 12px",marginBottom:8,borderLeft:`2px solid ${C.teal}`,display:"flex",gap:7,alignItems:"flex-start"}}>
+          <span style={{fontSize:12,flexShrink:0}}>🤖</span>
+          <span style={{fontSize:11,color:"#CCC",fontFamily:"system-ui",lineHeight:1.5}}>{state.coachNudge}</span>
+        </div>}
+        {allWeekTasks.length>0&&<div style={{background:"#333",borderRadius:3,height:3,marginBottom:8,overflow:"hidden"}}>
+          <div style={{height:"100%",width:`${pct}%`,background:pct===100?C.teal:C.gold,borderRadius:3,transition:"width 0.4s"}}/>
+        </div>}
+        <div style={{display:"flex",gap:1,overflowX:"auto"}}>
+          {TABS.map((t,i)=><button key={i} onClick={()=>setTab(i)} style={{padding:"7px 10px",border:"none",cursor:"pointer",fontSize:11,fontFamily:"system-ui",whiteSpace:"nowrap",background:tab===i?C.gold:"transparent",color:tab===i?"#fff":"#666",borderRadius:"7px 7px 0 0",transition:"all 0.2s",fontWeight:tab===i?600:400}}>
+            {t}{i===4&&parkCount>0?` (${parkCount})`:""}
+          </button>)}
+        </div>
+      </div>
+    </div>
+
+    <div style={{maxWidth:780,margin:"0 auto",padding:"16px 14px 0"}}>
+
+      {/* TAB 0: THIS WEEK */}
+      {tab===0&&<div style={{display:"flex",flexDirection:"column",gap:14}}>
+        <div style={{background:C.goldLight||"#FDF3E7",borderRadius:10,padding:"9px 13px",border:`1px solid ${C.goldB}`}}>
+          <div style={{fontSize:11,color:C.gold,fontFamily:"system-ui",fontWeight:600}}>📌 30-Day Commitment</div>
+          <div style={{fontSize:12,color:"#7A5C30",marginTop:2,fontStyle:"italic"}}>"I am building Powerful All Along. Every other idea gets parked until the workbook launches."</div>
+        </div>
+        {WEEKLY_LANES.map(lane=><LaneCard key={lane.id} lane={lane} tasks={state.weekly[lane.id]}
+          onUpdate={(id,f,v)=>updateWeekTask(lane.id,id,f,v)}
+          onAdd={()=>addWeekTask(lane.id)}
+          onRemove={id=>removeWeekTask(lane.id,id)}/>)}
+      </div>}
+
+      {/* TAB 1: TO-DO */}
+      {tab===1&&<div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+          <div>
+            <div style={{fontSize:14,fontWeight:"bold",color:C.text}}>Master To-Do List</div>
+            <div style={{fontSize:11,color:C.muted,fontFamily:"system-ui",marginTop:1}}>Brain dump everything · tap — to assign A, B, or C</div>
+          </div>
+          <button onClick={addTodo} style={{background:C.gold,color:"#fff",border:"none",borderRadius:10,padding:"8px 14px",cursor:"pointer",fontSize:12,fontFamily:"system-ui",fontWeight:600}}>+ Add</button>
+        </div>
+        {groups.A.length>0&&<div style={{marginBottom:8}}>
+          <div style={{fontSize:10,fontFamily:"system-ui",fontWeight:700,color:C.a,letterSpacing:1,marginBottom:6,textTransform:"uppercase"}}>A — Must Do First</div>
+          {groups.A.map((todo,i)=><TodoItem key={todo.id} todo={todo} abcNum={i+1} onUpdate={updateTodo} onRemove={removeTodo}/>)}
+        </div>}
+        {groups.B.length>0&&<div style={{marginBottom:8}}>
+          <div style={{fontSize:10,fontFamily:"system-ui",fontWeight:700,color:C.b,letterSpacing:1,marginBottom:6,textTransform:"uppercase"}}>B — After A's Done</div>
+          {groups.B.map(todo=><TodoItem key={todo.id} todo={todo} onUpdate={updateTodo} onRemove={removeTodo}/>)}
+        </div>}
+        {groups.C.length>0&&<div style={{marginBottom:8}}>
+          <div style={{fontSize:10,fontFamily:"system-ui",fontWeight:700,color:C.cc,letterSpacing:1,marginBottom:6,textTransform:"uppercase"}}>C — If Time Allows</div>
+          {groups.C.map(todo=><TodoItem key={todo.id} todo={todo} onUpdate={updateTodo} onRemove={removeTodo}/>)}
+        </div>}
+        {groups.none.length>0&&<div style={{marginBottom:8}}>
+          <div style={{fontSize:10,fontFamily:"system-ui",fontWeight:700,color:C.muted,letterSpacing:1,marginBottom:6,textTransform:"uppercase"}}>Unassigned — tap — to prioritize</div>
+          {groups.none.map(todo=><TodoItem key={todo.id} todo={todo} onUpdate={updateTodo} onRemove={removeTodo}/>)}
+        </div>}
+        {state.todos.length===0&&<div style={{textAlign:"center",padding:"40px 20px",color:C.muted,fontSize:13,fontFamily:"system-ui"}}>Hit "+ Add" to dump everything on your mind. Then assign A, B, or C.</div>}
+      </div>}
+
+      {/* TAB 2: WINS */}
+      {tab===2&&<div>
+        <div style={{background:C.white,borderRadius:14,border:`1.5px solid ${C.tealB}`,overflow:"hidden",marginBottom:14}}>
+          <div style={{background:C.tealL,padding:"12px 15px",borderBottom:`1px solid ${C.tealB}`}}>
+            <div style={{fontSize:14,fontWeight:"bold",color:C.teal}}>🏆 Today's Wins</div>
+            <div style={{fontSize:11,color:C.muted,fontFamily:"system-ui",marginTop:1}}>{todayLabel()} · Tasks you check off are logged automatically</div>
+          </div>
+          <div style={{padding:"12px 15px"}}>
+            <div style={{display:"flex",gap:8,marginBottom:12}}>
+              <input type="text" value={winNote} onChange={e=>setWinNote(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addWin()} placeholder="Add a win manually..." style={{flex:1,border:`1.5px solid ${C.border}`,borderRadius:10,padding:"8px 11px",fontSize:13,fontFamily:"Georgia,serif",outline:"none",color:C.text}}/>
+              <button onClick={addWin} style={{background:C.teal,color:"#fff",border:"none",borderRadius:10,padding:"8px 14px",cursor:"pointer",fontSize:12,fontFamily:"system-ui",fontWeight:600}}>Log it</button>
+            </div>
+            {todayWins.notes.length===0
+              ?<div style={{textAlign:"center",padding:"16px",color:C.muted,fontSize:12,fontFamily:"system-ui"}}>Check off a task anywhere — it appears here automatically.</div>
+              :todayWins.notes.map((n,i)=><div key={i} style={{display:"flex",gap:9,alignItems:"flex-start",padding:"7px 0",borderBottom:i<todayWins.notes.length-1?"1px solid #F5F5F5":"none"}}>
+                <span style={{color:C.teal,fontSize:13,flexShrink:0}}>✓</span>
+                <span style={{fontSize:13,fontFamily:"Georgia,serif",color:C.text}}>{n}</span>
+              </div>)}
+          </div>
+        </div>
+        <div style={{background:C.white,borderRadius:14,border:`1.5px solid ${C.border}`,overflow:"hidden"}}>
+          <div style={{padding:"12px 15px",borderBottom:`1px solid ${C.border}`}}>
+            <div style={{fontSize:13,fontWeight:"bold",color:C.text}}>📅 Weekly Log</div>
+          </div>
+          <div style={{padding:"8px 15px"}}>
+            {Object.entries(state.wins).filter(([k])=>k>=getWeekKey()).length===0
+              ?<div style={{padding:"20px",textAlign:"center",color:C.muted,fontSize:12,fontFamily:"system-ui"}}>Your wins will appear here as you check things off.</div>
+              :Object.entries(state.wins).filter(([k])=>k>=getWeekKey()).sort(([a],[b])=>b.localeCompare(a)).map(([date,data])=><div key={date} style={{marginBottom:12}}>
+                <div style={{fontSize:10,fontFamily:"system-ui",fontWeight:700,color:C.muted,letterSpacing:1,marginBottom:5,textTransform:"uppercase"}}>
+                  {new Date(date+"T12:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})} · {data.count} {data.count===1?"win":"wins"}
+                </div>
+                {data.notes.map((n,i)=><div key={i} style={{fontSize:12,fontFamily:"Georgia,serif",color:C.text,padding:"3px 0 3px 12px",borderLeft:`2px solid ${C.tealB}`,marginBottom:3}}>{n}</div>)}
+              </div>)}
+          </div>
+        </div>
+      </div>}
+
+      {/* TAB 3: COACH */}
+      {tab===3&&<div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+          <div>
+            <div style={{fontSize:15,fontWeight:"bold",color:C.text}}>🤖 AI Coach</div>
+            <div style={{fontSize:11,color:C.muted,fontFamily:"system-ui",marginTop:1}}>Personalized recommendations based on your real data and patterns.</div>
+          </div>
+          <button onClick={()=>fetchCoach(state)} disabled={coachLoading} style={{background:coachLoading?"#DDD":C.navy,color:"#fff",border:"none",borderRadius:10,padding:"8px 14px",cursor:coachLoading?"default":"pointer",fontSize:11,fontFamily:"system-ui",fontWeight:600}}>
+            {coachLoading?"Thinking...":"↻ Refresh"}
+          </button>
+        </div>
+        {coachError&&<div style={{background:"#FFF5F2",borderRadius:12,padding:"12px 14px",border:"1px solid #E07B5A",marginBottom:14,fontSize:12,color:"#B05030",fontFamily:"system-ui"}}>{coachError}</div>}
+        {coachLoading&&<div style={{background:C.white,borderRadius:14,border:`1.5px solid ${C.border}`,padding:"30px",textAlign:"center"}}>
+          <div style={{fontSize:24,marginBottom:10}}>🤖</div>
+          <div style={{fontSize:13,color:C.muted,fontFamily:"system-ui"}}>Analyzing your priorities...</div>
+        </div>}
+        {!coachLoading&&state.coachFull&&<div style={{background:C.white,borderRadius:14,border:`1.5px solid ${C.navyB}`,overflow:"hidden",marginBottom:14}}>
+          <div style={{background:C.navyL,padding:"12px 15px",borderBottom:`1px solid ${C.navyB}`}}>
+            <div style={{fontSize:13,fontWeight:"bold",color:C.navy}}>This Week's Recommendations</div>
+            {state.lastCoachFetch&&<div style={{fontSize:10,color:C.muted,fontFamily:"system-ui",marginTop:1}}>Updated {new Date(state.lastCoachFetch).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</div>}
+          </div>
+          <div style={{padding:"12px 15px"}}>
+            {state.coachFull.map((rec,i)=><div key={i} style={{display:"flex",gap:12,padding:"10px 0",borderBottom:i<state.coachFull.length-1?"1px solid #F5F5F5":"none",alignItems:"flex-start"}}>
+              <div style={{width:22,height:22,borderRadius:"50%",background:C.navyL,border:`2px solid ${C.navyB}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:10,fontWeight:"bold",color:C.navy,fontFamily:"system-ui"}}>{i+1}</div>
+              <div style={{fontSize:13,fontFamily:"Georgia,serif",color:C.text,lineHeight:1.6}}>{rec}</div>
+            </div>)}
+          </div>
+        </div>}
+        <div style={{background:"#FDF3E7",borderRadius:14,padding:"13px 15px",border:`1.5px solid ${C.goldB}`}}>
+          <div style={{fontSize:11,fontWeight:"bold",color:C.gold,marginBottom:5}}>💡 How this works</div>
+          <div style={{fontSize:12,color:"#7A5C30",fontFamily:"system-ui",lineHeight:1.7}}>Looks at your A-task progress, overdue items, workbook steps, and wins — then gives specific honest recommendations tied to your $1,000/month goal. Auto-refreshes every 6 hours.</div>
+        </div>
+      </div>}
+
+      {/* TAB 4: IDEAS */}
+      {tab===4&&<div>
+        <div style={{background:C.white,borderRadius:14,border:`1.5px solid ${C.border}`,overflow:"hidden",marginBottom:14}}>
+          <div style={{background:"#F9F9F9",padding:"12px 15px",borderBottom:`1px solid ${C.border}`}}>
+            <div style={{fontSize:14,fontWeight:"bold",color:C.text}}>🅿️ Idea Parking Lot</div>
+            <div style={{fontSize:11,color:C.muted,fontFamily:"system-ui",marginTop:1}}>Capture it. Don't act on it. Review monthly with your husband.</div>
+          </div>
+          <div style={{padding:"12px 15px"}}>
+            <div style={{display:"flex",gap:8,marginBottom:12}}>
+              <input type="text" value={newIdea} onChange={e=>setNewIdea(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&newIdea.trim()){update({parkedIdeas:[{id:mkId(),text:newIdea.trim(),date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"})},...state.parkedIdeas]});setNewIdea("");}}} placeholder="New idea — park it, don't chase it..." style={{flex:1,border:`1.5px solid ${C.border}`,borderRadius:10,padding:"8px 11px",fontSize:13,fontFamily:"Georgia,serif",outline:"none",color:C.text}}/>
+              <button onClick={()=>{if(!newIdea.trim())return;update({parkedIdeas:[{id:mkId(),text:newIdea.trim(),date:new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"})},...state.parkedIdeas]});setNewIdea("");}} style={{background:C.gold,color:"#fff",border:"none",borderRadius:10,padding:"8px 14px",cursor:"pointer",fontSize:12,fontFamily:"system-ui",fontWeight:600}}>Park it</button>
+            </div>
+            {state.parkedIdeas.length===0
+              ?<div style={{textAlign:"center",padding:"24px",color:C.muted,fontSize:12,fontFamily:"system-ui"}}>Next time a new idea hits — put it here, not on your plate.</div>
+              :state.parkedIdeas.map(idea=><div key={idea.id} style={{display:"flex",alignItems:"center",gap:9,padding:"9px 11px",background:"#FAFAFA",borderRadius:10,border:`1px solid ${C.border}`,marginBottom:7}}>
+                <span style={{fontSize:15,flexShrink:0}}>💡</span>
+                <span style={{flex:1,fontSize:13,fontFamily:"Georgia,serif",color:C.text}}>{idea.text}</span>
+                <span style={{fontSize:10,color:C.muted,fontFamily:"system-ui",flexShrink:0}}>{idea.date}</span>
+                <button onClick={()=>update({parkedIdeas:state.parkedIdeas.filter(i=>i.id!==idea.id)})} style={{background:"none",border:"none",color:"#CCC",cursor:"pointer",fontSize:15}}>×</button>
+              </div>)}
+          </div>
+        </div>
+        <div style={{background:"#FDF3E7",borderRadius:14,padding:"13px 15px",border:`1.5px solid ${C.goldB}`}}>
+          <div style={{fontSize:11,fontWeight:"bold",color:C.gold,marginBottom:5}}>📅 Monthly Review (you + your husband)</div>
+          <div style={{fontSize:12,color:"#7A5C30",fontFamily:"system-ui",lineHeight:1.8}}>
+            1. Still excited about this after a month?<br/>
+            2. Does it serve the $1,000/month goal better than the workbook right now?<br/>
+            3. If no to both — delete it.
+          </div>
+        </div>
+      </div>}
+
+    </div>
+  </div>;
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
