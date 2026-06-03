@@ -321,11 +321,19 @@ function App(){
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({prompt:buildContext(s)})
       });
+      if(!res.ok){throw new Error(`HTTP error: ${res.status}`);}
       const data=await res.json();
+      if(data.error){throw new Error(data.error);}
       const raw=data.text||"";
-      const parsed=JSON.parse(raw.replace(/```json|```/g,"").trim());
+      if(!raw){throw new Error("Empty response from coach");}
+      const cleaned=raw.replace(/```json|```/g,"").trim();
+      const firstBrace=cleaned.indexOf("{");
+      const lastBrace=cleaned.lastIndexOf("}");
+      const jsonStr=cleaned.substring(firstBrace,lastBrace+1);
+      const parsed=JSON.parse(jsonStr);
+      if(!parsed.nudge||!parsed.recommendations){throw new Error("Invalid response format");}
       update({coachNudge:parsed.nudge,coachFull:parsed.recommendations,lastCoachFetch:new Date().toISOString()});
-    } catch{setCoachError("Couldn't load recommendations right now. Try again.");}
+    } catch(err){setCoachError(`Couldn't load recommendations: ${err.message}. Try again.`);}
     setCoachLoading(false);
   },[buildContext]);
 
