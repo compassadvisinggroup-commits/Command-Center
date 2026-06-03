@@ -14,35 +14,38 @@ export default async function handler(req, res) {
         "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-opus-4-5",
         max_tokens: 1000,
         messages: [{ role: "user", content: prompt }]
       })
     });
 
     const data = await response.json();
-    
-    // Log full response for debugging
-    console.log("Anthropic response status:", response.status);
-    console.log("Anthropic response data:", JSON.stringify(data));
-    
-    // Extract text from response
+    console.log("Full Anthropic response:", JSON.stringify(data));
+
+    if (data.type === "error") {
+      return res.status(200).json({ 
+        error: data.error?.message || "Anthropic error", 
+        raw: JSON.stringify(data) 
+      });
+    }
+
     let text = "";
     if (data.content && Array.isArray(data.content)) {
       const textBlock = data.content.find(b => b.type === "text");
-      if (textBlock) {
-        text = textBlock.text;
-      }
+      if (textBlock) text = textBlock.text;
     }
-    
+
     if (!text) {
-      console.log("No text found in response:", JSON.stringify(data));
-      return res.status(200).json({ error: "No text in response", raw: JSON.stringify(data) });
+      return res.status(200).json({ 
+        error: "No text in response", 
+        raw: JSON.stringify(data) 
+      });
     }
-    
+
     res.status(200).json({ text });
   } catch (err) {
     console.log("Error:", err.message);
-    res.status(500).json({ error: "Coach unavailable", detail: err.message });
+    res.status(500).json({ error: err.message });
   }
 }
