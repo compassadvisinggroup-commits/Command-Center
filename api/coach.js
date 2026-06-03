@@ -5,6 +5,7 @@ export default async function handler(req, res) {
 
   try {
     const { prompt } = req.body;
+    
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -20,9 +21,28 @@ export default async function handler(req, res) {
     });
 
     const data = await response.json();
-    const text = data.content?.find(b => b.type === "text")?.text || "";
+    
+    // Log full response for debugging
+    console.log("Anthropic response status:", response.status);
+    console.log("Anthropic response data:", JSON.stringify(data));
+    
+    // Extract text from response
+    let text = "";
+    if (data.content && Array.isArray(data.content)) {
+      const textBlock = data.content.find(b => b.type === "text");
+      if (textBlock) {
+        text = textBlock.text;
+      }
+    }
+    
+    if (!text) {
+      console.log("No text found in response:", JSON.stringify(data));
+      return res.status(200).json({ error: "No text in response", raw: JSON.stringify(data) });
+    }
+    
     res.status(200).json({ text });
   } catch (err) {
+    console.log("Error:", err.message);
     res.status(500).json({ error: "Coach unavailable", detail: err.message });
   }
 }
