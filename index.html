@@ -316,12 +316,13 @@ function App(){
   const fetchCoach=useCallback(async(s)=>{
     setCoachLoading(true);setCoachError(null);
     try{
-      const res=await fetch("https://api.anthropic.com/v1/messages",{
-        method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:buildContext(s)}]})
+      const res=await fetch("/api/coach",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({prompt:buildContext(s)})
       });
       const data=await res.json();
-      const raw=data.content?.find(b=>b.type==="text")?.text||"";
+      const raw=data.text||"";
       const parsed=JSON.parse(raw.replace(/```json|```/g,"").trim());
       update({coachNudge:parsed.nudge,coachFull:parsed.recommendations,lastCoachFetch:new Date().toISOString()});
     } catch{setCoachError("Couldn't load recommendations right now. Try again.");}
